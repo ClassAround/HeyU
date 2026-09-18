@@ -30,6 +30,11 @@
 
 ## 설치와 실행
 
+설치 파일은 [GitHub Releases](https://github.com/ClassAround/HeyU/releases)에서 받습니다.
+Mac은 v0.1.1 이상을 사용하세요. 테스트 빌드에는 ad-hoc 서명만 적용되어 있으며
+Apple Developer ID 서명·공증은 없습니다. 최초 실행이 차단되면 파일 출처를 확인한 후
+시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기를 사용합니다.
+
 ```bash
 npm install
 npm run dev        # 개발 모드
