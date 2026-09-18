@@ -1,7 +1,7 @@
 import { app, shell, BrowserWindow, protocol, net } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { registerIpc } from './ipc.js'
+import { registerIpc, resumeActiveJob } from './ipc.js'
 
 /**
  * 로컬 결과 영상을 렌더러에서 재생하기 위한 전용 프로토콜.
@@ -44,6 +44,12 @@ function createWindow(): void {
   else void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
 
   registerIpc(mainWindow)
+
+  // 지난 실행에서 끝내지 못한 번역이 있으면 다시 붙는다.
+  // 렌더러가 뜬 뒤에 시작해야 진행 상황 이벤트를 받을 화면이 존재한다.
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (mainWindow) void resumeActiveJob(mainWindow)
+  })
 }
 
 app.whenReady().then(() => {

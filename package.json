@@ -12,7 +12,8 @@
     "start": "electron-vite preview",
     "pack:mac": "npm run build && electron-builder --mac",
     "pack:win": "npm run build && electron-builder --win",
-    "pack:all": "npm run build && electron-builder --mac --win"
+    "pack:all": "npm run build && electron-builder --mac --win",
+    "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -88,5 +89,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "HeyU"
     }
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0"
   }
 }

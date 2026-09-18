@@ -1,6 +1,6 @@
-import { createReadStream, createWriteStream, statSync } from 'node:fs'
+import { createReadStream, statSync } from 'node:fs'
 import { Readable } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
+import { downloadFile } from './download.js'
 import { basename, extname } from 'node:path'
 import type { DubOptions } from '../../shared/types.js'
 
@@ -69,8 +69,10 @@ function guessContentType(path: string): string {
   return map[extname(path).toLowerCase()] ?? 'video/mp4'
 }
 
+export type HeyGenTransport = (path: string, init: RequestInit) => Promise<unknown>
+
 export class HeyGenClient {
-  constructor(private readonly apiKey: string) {
+  constructor(private readonly apiKey: string | HeyGenTransport) {
     if (!apiKey) throw new HeyGenError('HeyGen API 키가 설정되지 않았습니다.')
   }
 
@@ -78,6 +80,7 @@ export class HeyGenClient {
     path: string,
     init: RequestInit & { signal?: AbortSignal } = {}
   ): Promise<T> {
+    if (typeof this.apiKey === 'function') return unwrap<T>(await this.apiKey(path, init))
     const res = await fetch(`${BASE}${path}`, {
       ...init,
       headers: {
@@ -147,7 +150,12 @@ export class HeyGenClient {
       onProgress(Math.min(sent / size, 1))
     })
 
-    const putRes = await fetch(init.upload_url, {
+    const uploadUrl = new URL(init.upload_url)
+    if (uploadUrl.protocol !== 'https:' || !uploadUrl.hostname.endsWith('.amazonaws.com')) {
+      throw new HeyGenError('허용되지 않은 업로드 주소입니다.')
+    }
+    const putRes = await fetch(uploadUrl, {
+      redirect: 'error',
       method: 'PUT',
       signal,
       // upload_headers 는 presigned 서명에 포함되므로 한 글자도 바꾸지 않고 그대로 보낸다.
@@ -252,21 +260,6 @@ export class HeyGenClient {
     onProgress: (ratio: number | null) => void,
     signal?: AbortSignal
   ): Promise<void> {
-    const res = await fetch(url, { signal })
-    if (!res.ok || !res.body) {
-      throw new HeyGenError(`결과 다운로드 실패 (HTTP ${res.status}).`, res.status)
-    }
-
-    const total = Number(res.headers.get('content-length') ?? 0)
-    let got = 0
-
-    const source = Readable.fromWeb(res.body as any)
-    source.on('data', (chunk: Buffer) => {
-      got += chunk.length
-      onProgress(total > 0 ? Math.min(got / total, 1) : null)
-    })
-
-    await pipeline(source, createWriteStream(destPath))
-    onProgress(1)
+    await downloadFile(url, destPath, onProgress, signal)
   }
 }

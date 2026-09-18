@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   MAX_DURATION_SECONDS,
+  MAX_UPLOAD_BYTES,
   type DubOptions,
   type JobProgress,
   type SelectedVideo
@@ -43,6 +44,7 @@ export default function DubPanel({
   onOpenSettings
 }: Props): JSX.Element {
   const [over, setOver] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
   const [duration, setDuration] = useState<number | null>(null)
   const [opts, setOpts] = useState<DubOptions>({
     mode: 'precision',
@@ -52,7 +54,10 @@ export default function DubPanel({
   const previewRef = useRef<HTMLVideoElement>(null)
 
   // 영상이 바뀌면 길이 정보를 버린다. 이전 영상 값이 남아 잘못된 경고가 뜨는 걸 막는다.
-  useEffect(() => setDuration(null), [video?.path])
+  useEffect(() => {
+    setDuration(null)
+    setStartError(null)
+  }, [video?.path])
 
   const running =
     job != null && !['idle', 'done', 'failed', 'canceled'].includes(job.stage)
@@ -71,11 +76,29 @@ export default function DubPanel({
     if (path) setVideo(await window.heyu.video.setPath(path))
   }
 
+  /**
+   * 더빙 시작.
+   *
+   * 결과를 버리면 안 된다 — 파이프라인이 시작되기 *전에* 거절되는 경우
+   * (키 없음, 로그인 안 됨, 이미 진행 중) 진행률 이벤트가 한 번도 오지 않아서
+   * 화면에 아무 변화가 없다. 사용자에게는 "버튼이 죽은 것" 으로 보인다.
+   */
   const start = async (): Promise<void> => {
-    await window.heyu.job.start(opts)
+    setStartError(null)
+    const res = await window.heyu.job.start(opts)
+    if (!res.ok) setStartError(res.error ?? '작업을 시작하지 못했습니다.')
   }
 
   const tooLong = duration != null && duration > MAX_DURATION_SECONDS
+  /*
+   * 용량 경고. **막지는 않는다.**
+   *
+   * 상한을 정하는 쪽은 HeyGen 이고 우리는 그 값을 베껴 둔 것뿐이다. 여기서 버튼을
+   * 잠가버리면 HeyGen 이 상한을 올렸을 때 앱이 멀쩡한 파일을 거부하게 된다 —
+   * 우리가 상수를 고칠 때까지. 게다가 거절은 바이트를 보내기 전에 나므로 시도 비용이 거의 없다.
+   * 그러니 알려주되 판단은 서버에 맡긴다.
+   */
+  const tooBig = video != null && video.sizeBytes > MAX_UPLOAD_BYTES
 
   return (
     <div className="pane">
@@ -108,6 +131,7 @@ export default function DubPanel({
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {tooBig && <span className="badge warn">용량 초과</span>}
               {tooLong && <span className="badge warn">2분 초과</span>}
               {!running && (
                 <button
@@ -131,6 +155,25 @@ export default function DubPanel({
             preload="metadata"
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
           />
+
+          {tooBig && (
+            <div
+              className="note"
+              style={{
+                marginTop: 12,
+                color: '#e8a29a',
+                borderColor: 'rgba(224,90,78,.3)',
+                background: 'rgba(224,90,78,.1)'
+              }}
+            >
+              이 파일은 {fmtSize(video.sizeBytes)}입니다. HeyGen이 알려준 업로드 상한은{' '}
+              <b>200MB</b>라 거절될 가능성이 높습니다. 눌러보셔도 됩니다 — 거절되면 바이트를
+              보내기 전에 즉시 끝나고 크레딧도 나가지 않습니다.
+              <br />
+              줄이려면 H.264로 다시 인코딩하세요. 카메라 원본은 비트레이트가 과도해서 화질을
+              낮추지 않아도 대개 크게 줄고, 더빙 결과는 어차피 HeyGen이 재인코딩합니다.
+            </div>
+          )}
 
           {tooLong && (
             <div className="note" style={{ marginTop: 12 }}>
@@ -204,7 +247,7 @@ export default function DubPanel({
 
       {!hasHeygen ? (
         <button className="btn primary" onClick={onOpenSettings}>
-          HeyGen API 키 설정하기
+          HeyGen 계정 연결하기
         </button>
       ) : running ? (
         <button className="btn" onClick={() => void window.heyu.job.cancel()}>
@@ -214,6 +257,20 @@ export default function DubPanel({
         <button className="btn primary" onClick={() => void start()} disabled={!video}>
           영어로 더빙하기
         </button>
+      )}
+
+      {startError && (
+        <div
+          className="note"
+          style={{
+            marginTop: 13,
+            color: '#e8a29a',
+            borderColor: 'rgba(224,90,78,.3)',
+            background: 'rgba(224,90,78,.1)'
+          }}
+        >
+          {startError}
+        </div>
       )}
 
       {job && job.stage !== 'idle' && (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { CredentialStatus } from '../../../shared/types'
+import type { CredentialStatus, McpStatus } from '../../../shared/types'
 
 interface Props {
   onClose: () => void
@@ -13,30 +13,55 @@ interface Props {
  * 그래서 입력란은 항상 비어 있고, 비워둔 채 저장하면 기존 값을 유지한다.
  */
 export default function Settings({ onClose, onSaved, status }: Props): JSX.Element {
-  const [heygen, setHeygen] = useState('')
-  const [openai, setOpenai] = useState('')
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
   const [domains, setDomains] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
+  const [mcp, setMcp] = useState<McpStatus>({ connected: false })
+  /** 연결 버튼은 브라우저를 띄우고 사람이 로그인할 때까지 몇 분이고 기다린다. */
+  const [mcpBusy, setMcpBusy] = useState(false)
+  const [mcpNote, setMcpNote] = useState<string | null>(null)
   useEffect(() => {
     void window.heyu.auth.allowedDomains().then((d) => setDomains(d.join(', ')))
+    void window.heyu.mcp.status().then(setMcp)
   }, [])
+
+  const connectMcp = async (): Promise<void> => {
+    setMcpBusy(true)
+    setMcpNote('브라우저에서 HeyGen 로그인을 완료해 주세요…')
+    try {
+      const res = await window.heyu.mcp.connect()
+      if (!res.ok) {
+        setMcpNote(res.error ?? 'HeyGen 연결에 실패했습니다.')
+        return
+      }
+      setMcp(res.status!)
+      // 연결 자체보다 "무엇을 쓸 수 있게 되었는지"가 사용자에게 의미 있는 정보다.
+      const tools = await window.heyu.mcp.tools()
+      setMcpNote(tools.ok ? `연결됨 · 도구 ${tools.count}개 사용 가능` : '연결됨')
+      onSaved()
+    } finally {
+      setMcpBusy(false)
+    }
+  }
+
+  const disconnectMcp = async (): Promise<void> => {
+    setMcpBusy(true)
+    try {
+      const res = await window.heyu.mcp.disconnect()
+      setMcp(res.status)
+      setMcpNote(null)
+      onSaved()
+    } finally {
+      setMcpBusy(false)
+    }
+  }
 
   const save = async (): Promise<void> => {
     setBusy(true)
     setError(null)
     try {
-      if (heygen.trim()) {
-        const res = await window.heyu.creds.setHeygen(heygen)
-        if (!res.ok) {
-          setError(res.error ?? 'HeyGen 키 검증에 실패했습니다.')
-          return
-        }
-      }
-      if (openai.trim()) await window.heyu.creds.setOpenai(openai)
       if (clientId.trim()) await window.heyu.creds.setGoogleClient(clientId, clientSecret)
 
       await window.heyu.auth.setAllowedDomains(
@@ -58,40 +83,37 @@ export default function Settings({ onClose, onSaved, status }: Props): JSX.Eleme
       <div className="modal">
         <h3>설정</h3>
         <p className="sub">
-          키는 OS 보안 저장소(macOS 키체인 / Windows DPAPI)로 암호화되어 이 PC에만 저장됩니다.
+          연결 순서: ① Google 로그인 → ② HeyGen 계정 연결. 키와 토큰은 OS 보안
+          저장소(macOS 키체인 / Windows DPAPI)로 암호화되어 이 PC에만 저장됩니다.
         </p>
 
         <div className="group">
           <div className="label">
-            HeyGen API 키 {mark(status.heygen)}
+            HeyGen 계정 연결 {mark(mcp.connected)}
           </div>
-          <input
-            className="field"
-            type="password"
-            value={heygen}
-            onChange={(e) => setHeygen(e.target.value)}
-            placeholder={status.heygen ? '변경하려면 새 키 입력' : 'HeyGen API 키'}
-          />
+          {mcp.connected && mcp.account && (
+            <div className="hint" style={{ marginBottom: 8 }}>
+              연결된 계정: <b>{mcp.account}</b>
+            </div>
+          )}
+          <div className="actions" style={{ justifyContent: 'flex-start', marginBottom: 8 }}>
+            {mcp.connected ? (
+              <button className="btn ghost" onClick={() => void disconnectMcp()} disabled={mcpBusy}>
+                {mcpBusy ? '처리 중…' : '연결 해제'}
+              </button>
+            ) : (
+              <button className="btn primary" onClick={() => void connectMcp()} disabled={mcpBusy}>
+                {mcpBusy ? '브라우저에서 로그인 대기 중…' : 'HeyGen 계정 연결'}
+              </button>
+            )}
+          </div>
+          {mcpNote && <div className="hint" style={{ marginBottom: 6 }}>{mcpNote}</div>}
           <div className="hint">
-            더빙에 반드시 필요합니다. HeyGen 대시보드 → Settings → API 에서 발급합니다. 저장 시
-            실제로 호출해 유효성을 확인합니다.
+            브라우저 로그인으로 HeyGen MCP에 연결합니다. <b>API 키는 필요하지 않습니다.</b>
+            연결 후 영상을 선택하고 더빙 버튼을 누르면 됩니다.
           </div>
-        </div>
-
-        <div className="group">
-          <div className="label">
-            OpenAI API 키 {mark(status.openai)}
-          </div>
-          <input
-            className="field"
-            type="password"
-            value={openai}
-            onChange={(e) => setOpenai(e.target.value)}
-            placeholder={status.openai ? '변경하려면 새 키 입력' : 'sk-...'}
-          />
-          <div className="hint">
-            대화형 조작에만 쓰입니다. 비워두면 오른쪽 채팅만 비활성화되고 더빙은 정상 동작합니다.
-            ChatGPT Plus 구독과는 별개로 종량 과금됩니다.
+          <div className="note" style={{ marginTop: 8 }}>
+            더빙은 이 MCP 연결로 실행됩니다. 이용 요금은 HeyGen 웹 플랜의 크레딧 정책을 따릅니다.
           </div>
         </div>
 
@@ -146,6 +168,14 @@ export default function Settings({ onClose, onSaved, status }: Props): JSX.Eleme
         )}
 
         <div className="actions">
+          <button
+            className="btn ghost"
+            onClick={() => void window.heyu.onboarding.reset().then(onSaved).then(onClose)}
+            disabled={busy}
+            style={{ marginRight: 'auto' }}
+          >
+            연결 안내 다시 보기
+          </button>
           <button className="btn ghost" onClick={onClose} disabled={busy}>
             취소
           </button>

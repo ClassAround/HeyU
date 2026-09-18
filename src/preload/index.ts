@@ -4,6 +4,7 @@ import type {
   DubOptions,
   GoogleProfile,
   JobProgress,
+  McpStatus,
   SelectedVideo
 } from '../shared/types.js'
 
@@ -14,9 +15,6 @@ import type {
 const api = {
   creds: {
     status: (): Promise<CredentialStatus> => ipcRenderer.invoke('creds:status'),
-    setHeygen: (key: string): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke('creds:setHeygen', key),
-    setOpenai: (key: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('creds:setOpenai', key),
     setGoogleClient: (id: string, secret: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke('creds:setGoogleClient', id, secret)
   },
@@ -34,12 +32,28 @@ const api = {
     setAllowedDomains: (domains: string[]): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke('auth:setAllowedDomains', domains)
   },
+  /** 최초 1회 연결 안내. 끝내면 다시 뜨지 않는다. */
+  onboarding: {
+    needed: (): Promise<boolean> => ipcRenderer.invoke('onboarding:needed'),
+    complete: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('onboarding:complete'),
+    reset: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('onboarding:reset')
+  },
+  /** HeyGen MCP — OAuth 로 계정을 붙인다. 토큰은 메인 프로세스 밖으로 나가지 않는다. */
+  mcp: {
+    status: (): Promise<McpStatus> => ipcRenderer.invoke('mcp:status'),
+    connect: (): Promise<{ ok: boolean; status?: McpStatus; error?: string }> =>
+      ipcRenderer.invoke('mcp:connect'),
+    disconnect: (): Promise<{ ok: boolean; status: McpStatus }> =>
+      ipcRenderer.invoke('mcp:disconnect'),
+    tools: (): Promise<{ ok: boolean; count?: number; names?: string[]; error?: string }> =>
+      ipcRenderer.invoke('mcp:tools')
+  },
   video: {
     pick: (): Promise<SelectedVideo | null> => ipcRenderer.invoke('video:pick'),
     setPath: (path: string): Promise<SelectedVideo> => ipcRenderer.invoke('video:setPath', path),
     clear: (): Promise<null> => ipcRenderer.invoke('video:clear'),
     /** 드래그앤드롭된 File 객체에서 실제 경로를 얻는다. Electron 32+ 필수 API. */
-    pathForFile: (file: File): string => webUtils.getPathForFile(file)
+    pathForFile: (file: File): string => webUtils.getPathForFile(file),
   },
   job: {
     start: (opts: DubOptions): Promise<{ ok: boolean; outputPath?: string; error?: string }> =>
@@ -52,14 +66,10 @@ const api = {
       return () => ipcRenderer.removeListener('job:progress', listener)
     }
   },
-  chat: {
-    send: (
-      history: Array<{ role: 'user' | 'assistant'; content: string }>,
-      input: string
-    ): Promise<{ ok: boolean; reply?: string; toolNotes?: string[]; error?: string }> =>
-      ipcRenderer.invoke('chat:send', history, input)
-  },
   shell: {
+    /** 안내에 적어둔 발급 페이지만 열린다. 임의 URL 은 메인 프로세스가 거부한다. */
+    openExternal: (url: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('shell:openExternal', url),
     reveal: (path: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('shell:reveal', path)
   }
 }

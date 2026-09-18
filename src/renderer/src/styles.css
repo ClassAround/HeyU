@@ -121,9 +121,25 @@ input {
   border-radius: 50%;
 }
 
+/* 프로필 사진을 못 받았을 때. 크기·모양은 img 와 같아야 배치가 흔들리지 않는다. */
+.avatar-fallback {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: var(--accent);
+  color: #14161a;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .panes {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 0;
 }
 .pane {
@@ -371,72 +387,6 @@ video.preview {
   color: var(--text-dim);
 }
 
-/* ── 채팅 ────────────────────────────────────────────── */
-.chat {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-.chat .log {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-bottom: 14px;
-}
-.msg {
-  max-width: 88%;
-  padding: 10px 13px;
-  border-radius: var(--r-md);
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 13.5px;
-}
-.msg.user {
-  align-self: flex-end;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-line);
-}
-.msg.assistant {
-  align-self: flex-start;
-  background: var(--surface);
-  border: 1px solid var(--line);
-}
-.msg .tool {
-  margin-top: 7px;
-  padding-top: 7px;
-  border-top: 1px solid var(--line);
-  font-size: 11.5px;
-  color: var(--accent);
-}
-.composer {
-  display: flex;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-.composer input {
-  flex: 1;
-  padding: 10px 13px;
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  color: var(--text);
-  outline: none;
-}
-.composer input:focus {
-  border-color: var(--accent-line);
-}
-
-.empty {
-  color: var(--text-faint);
-  font-size: 13px;
-  text-align: center;
-  margin: auto 0;
-  padding: 0 20px;
-}
-
 /* ── 설정 모달 ───────────────────────────────────────── */
 .scrim {
   position: fixed;
@@ -569,20 +519,60 @@ video.preview {
   line-height: 1.55;
 }
 
-.gate-btn {
+.gate-setup {
+  margin-top: 18px;
+  margin-bottom: 0;
+}
+
+/*
+ * Google 로그인 버튼.
+ *
+ * 흰 배경·회색 테두리·4색 로고는 Google 브랜드 가이드라인이 정한 것이다.
+ * 어두운 화면에 맞춘다고 색을 바꾸면 안 된다 — 사용자가 한눈에 알아보는 것이
+ * "디자인이 튀지 않는 것"보다 중요하고, 가이드라인 위반이기도 하다.
+ */
+.btn-google {
   width: 100%;
-  padding: 11px;
-  font-size: 14.5px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 16px;
+  background: #fff;
+  color: #1f1f1f;
+  border: 1px solid #747775;
+  border-radius: var(--r-sm);
+  font-family: 'Roboto', -apple-system, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.15px;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-google:hover:not(:disabled) {
+  background: #f7f8f8;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.btn-google:active:not(:disabled) {
+  background: #f1f3f4;
+}
+.btn-google:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.btn-google svg {
+  flex: none;
 }
 
 .gate-error {
+  margin-top: 18px;
   padding: 10px 13px;
   border-radius: var(--r-sm);
   background: rgba(224, 90, 78, 0.1);
   border: 1px solid rgba(224, 90, 78, 0.3);
   color: #e8a29a;
   font-size: 12.5px;
-  margin-bottom: 16px;
   text-align: left;
   line-height: 1.55;
 }
@@ -591,4 +581,143 @@ video.preview {
   margin: 16px 0 0;
   color: var(--text-faint);
   font-size: 12px;
+}
+
+
+/* ── 최초 연결 안내 ───────────────────────────────────────── */
+
+.gate-card.ob {
+  max-width: 520px;
+  text-align: left;
+}
+.gate-card.ob .gate-brand,
+.gate-card.ob h1 {
+  text-align: center;
+}
+.gate-card.ob .gate-sub {
+  text-align: center;
+  margin-bottom: 22px;
+}
+
+.ob-step {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+
+.ob-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+}
+
+.ob-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  /* 제목이 줄바꿈되면 태그가 눌려 원형으로 찌그러진다. 줄이 넘칠 바엔 값 쪽을 줄인다. */
+  white-space: nowrap;
+  flex: none;
+}
+
+/* 체크 자리를 항상 비워둔다 — 완료 여부에 따라 제목이 좌우로 움직이면 눈에 거슬린다. */
+.ob-check {
+  width: 13px;
+  flex: none;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.ob-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  flex: none;
+}
+.ob-tag.req {
+  border-color: rgba(232, 131, 58, 0.35);
+  color: var(--accent);
+}
+
+.ob-value {
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.ob-head > .btn {
+  flex: none;
+}
+
+.ob-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ob-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.ob-desc {
+  margin-top: 8px;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.ob-note {
+  padding: 10px 13px;
+  border-radius: var(--r-sm);
+  background: rgba(232, 131, 58, 0.1);
+  border: 1px solid rgba(232, 131, 58, 0.3);
+  color: var(--accent);
+  font-size: 12.5px;
+  margin: 6px 0 12px;
+  line-height: 1.55;
+}
+
+.gate-card.ob .gate-error {
+  margin: 6px 0 12px;
+}
+.gate-card.ob .gate-btn {
+  margin-top: 8px;
+}
+
+/* 로그인 화면이 Google 버튼으로 바뀌면서 한 번 사라졌던 규칙. 안내 화면이 쓴다. */
+.gate-btn {
+  width: 100%;
+  padding: 11px;
+  font-size: 14.5px;
+}
+
+/* 본문 안에 섞이는 링크형 버튼. <a href> 를 쓰면 렌더러가 페이지를 이동해 버린다. */
+.linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.linkish:hover {
+  opacity: 0.85;
 }

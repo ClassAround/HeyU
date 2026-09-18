@@ -2,6 +2,7 @@ import { app, safeStorage } from 'electron'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import type { CredentialStatus, GoogleProfile } from '../shared/types.js'
+import type { McpClientInfo, McpTokens } from './auth/heygenMcp.js'
 
 /**
  * 자격증명 저장소.
@@ -13,13 +14,22 @@ import type { CredentialStatus, GoogleProfile } from '../shared/types.js'
 
 interface Vault {
   heygenApiKey?: string
-  openaiApiKey?: string
   googleClientId?: string
   googleClientSecret?: string
   googleRefreshToken?: string
   googleProfile?: GoogleProfile
   /** 비어 있으면 도메인 제한 없음. 예: ['titanz.co.kr'] */
   allowedDomains?: string[]
+  /** 동적 등록(DCR)으로 받아온 MCP 클라이언트. 갱신 때 재사용한다. */
+  heygenMcpClient?: McpClientInfo
+  heygenMcpTokens?: McpTokens
+  /** 연결된 HeyGen 계정 표시용 문자열. */
+  heygenMcpAccount?: string
+  /**
+   * 최초 연결 안내를 끝낸 시각(epoch ms).
+   * 값이 있으면 다시 띄우지 않는다 — 매번 뜨는 안내는 안내가 아니라 방해다.
+   */
+  onboardedAt?: number
 }
 
 const vaultPath = (): string => join(app.getPath('userData'), 'credentials.bin')
@@ -79,8 +89,8 @@ export const store = {
     const v = load()
     return {
       heygen: Boolean(v.heygenApiKey),
-      openai: Boolean(v.openaiApiKey),
-      google: Boolean(v.googleRefreshToken)
+      google: Boolean(v.googleRefreshToken),
+      heygenMcp: Boolean(v.heygenMcpClient && v.heygenMcpTokens)
     }
   }
 }

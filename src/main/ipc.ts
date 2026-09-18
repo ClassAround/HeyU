@@ -1,18 +1,21 @@
 import { ipcMain, dialog, shell, app, BrowserWindow } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { join, basename } from 'node:path'
-import { mkdirSync, statSync } from 'node:fs'
+import { mkdirSync, statSync, existsSync } from 'node:fs'
 import { store } from './store.js'
 import { signInWithGoogle } from './auth/google.js'
-import { HeyGenClient } from './services/heygen.js'
-import { OpenAIClient } from './services/openai.js'
+import { HeyGenClient, HeyGenError } from './services/heygen.js'
+import { mcpHeygen } from './services/heygenMcpTransport.js'
+import { heygenMcp } from './services/heygenMcp.js'
+import { jobStore } from './jobStore.js'
 import type {
   DubOptions,
   JobProgress,
   JobStage,
   SelectedVideo,
   CredentialStatus,
-  GoogleProfile
+  GoogleProfile,
+  McpStatus
 } from '../shared/types.js'
 
 /** 한 번에 하나의 더빙 작업만 돌린다. 동시 실행은 크레딧만 축내고 UI를 헷갈리게 한다. */
@@ -24,7 +27,23 @@ interface ActiveJob {
 
 let selected: SelectedVideo | null = null
 let job: ActiveJob | null = null
+/** 앱을 다시 켰을 때도 마지막 결과 카드가 남아 있도록 디스크에서 읽어온다. */
 let lastFinished: JobProgress | null = null
+
+/**
+ * 현재 살아 있는 창. macOS 는 창을 닫아도 앱이 남아 있고, 독 아이콘을 누르면
+ * 창만 새로 만들어진다 — 그때 핸들러를 다시 등록하면 Electron 이
+ * "second handler" 로 막아 창 생성이 통째로 실패한다.
+ * 그래서 핸들러는 한 번만 등록하고, 대상 창만 갈아끼운다.
+ */
+let currentWin: BrowserWindow | null = null
+let handlersRegistered = false
+
+/** 핸들러 안에서 쓰는 창. 등록 시점이 아니라 호출 시점의 창이어야 한다. */
+function win(): BrowserWindow {
+  if (!currentWin || currentWin.isDestroyed()) throw new Error('창이 없습니다.')
+  return currentWin
+}
 
 function outputDir(): string {
   const dir = join(app.getPath('videos'), 'HeyU')
@@ -56,6 +75,10 @@ function googleClientId(): string {
   return store.get('googleClientId') || __GOOGLE_CLIENT_ID__ || ''
 }
 
+function googleClientSecret(): string | undefined {
+  return store.get('googleClientSecret') || __GOOGLE_CLIENT_SECRET__ || undefined
+}
+
 function allowedDomains(): string[] {
   const saved = store.get('allowedDomains')
   if (saved?.length) return saved
@@ -77,10 +100,81 @@ function requireSignIn(): void {
   }
 }
 
-function heygen(): HeyGenClient {
-  const key = store.get('heygenApiKey')
-  if (!key) throw new Error('HeyGen API 키를 먼저 설정해 주세요.')
-  return new HeyGenClient(key)
+/** New uploads and translations always use the connected HeyGen MCP account. */
+function heygen(): HeyGenClient { return mcpHeygen() }
+
+/** 결과 파일 이름으로 쓸 수 있게 확장자와 금지 문자를 털어낸다. */
+function safeNameOf(name: string): string {
+  return name.replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]/g, '_')
+}
+
+/**
+ * 번역 요청 이후 구간 — 폴링과 다운로드.
+ * 새 작업과 "이전 작업 재개"가 이 함수를 공유한다. 두 경로가 갈라지면
+ * 한쪽만 고치는 버그가 반드시 생긴다.
+ */
+async function awaitAndDownload(
+  win: BrowserWindow,
+  client: HeyGenClient,
+  translationId: string,
+  safeName: string,
+  signal: AbortSignal,
+  elapsedOffsetMs = 0
+): Promise<string> {
+  const done = await client.waitForTranslation(
+    translationId,
+    (_s, elapsed) => {
+      const total = elapsed + elapsedOffsetMs
+      const mins = Math.floor(total / 60000)
+      const secs = Math.floor((total % 60000) / 1000)
+      setStage(
+        win,
+        'translating',
+        `영어 더빙 생성 중 · ${mins}분 ${String(secs).padStart(2, '0')}초 경과`
+      )
+    },
+    signal
+  )
+
+  const outPath = join(outputDir(), `${safeName}_EN_${Date.now()}.mp4`)
+
+  setStage(win, 'downloading', '결과 내려받는 중', 0)
+  await client.download(
+    done.video_url!,
+    outPath,
+    (r) => setStage(win, 'downloading', '결과 내려받는 중', r),
+    signal
+  )
+  return outPath
+}
+
+/**
+ * 작업 종료를 한곳에서 처리한다 — 화면 갱신과 디스크 기록이 어긋나지 않게.
+ *
+ * 실패한 경우에도 기록을 지울지가 관건이다. HeyGen 이 "failed" 라고 말했으면 끝난 것이지만,
+ * 네트워크가 끊겨서 실패한 것이라면 **번역은 서버에서 계속 돌고 있다.** 후자는 기록을 남겨
+ * 다음 실행 때 다시 붙는다 — 이미 크레딧이 빠져나갔기 때문이다.
+ */
+function finishJob(win: BrowserWindow, error?: unknown, outputPath?: string): void {
+  if (!job) return
+
+  if (!error) {
+    setStage(win, 'done', '완료', 1, { outputPath })
+    lastFinished = job.progress
+    jobStore.setLast(job.progress)
+    return
+  }
+
+  const canceled = job.controller.signal.aborted
+  const msg = error instanceof Error ? error.message : String(error)
+  const terminal =
+    canceled || (error instanceof HeyGenError && (error.detail as any)?.status === 'failed')
+
+  setStage(win, canceled ? 'canceled' : 'failed', canceled ? '취소됨' : '실패', null, { error: msg })
+  lastFinished = job.progress
+
+  if (terminal) jobStore.setLast(job.progress)
+  // 그 외에는 active 기록을 그대로 둔다. 다음 실행이 이어받는다.
 }
 
 /**
@@ -100,6 +194,7 @@ async function runDub(win: BrowserWindow, opts: DubOptions): Promise<string> {
   }
   const signal = job.controller.signal
   const source = selected
+  const safeName = safeNameOf(source.name)
 
   try {
     setStage(win, 'uploading', '영상 업로드 중', 0)
@@ -109,75 +204,91 @@ async function runDub(win: BrowserWindow, opts: DubOptions): Promise<string> {
       signal
     )
 
-    setStage(win, 'submitting', '번역 작업 요청 중')
+    setStage(win, 'submitting', 'HeyGen MCP로 번역 요청 중')
     const translationId = await client.createTranslation(assetId, opts, signal)
 
+    // 크레딧이 빠져나가는 시점이다. 여기서부터는 앱이 죽어도 되찾을 수 있어야 한다.
+    jobStore.setActive({ jobId: id, translationId, safeName, opts, startedAt: Date.now(), transport: 'mcp' })
+
     setStage(win, 'translating', '영어 더빙 생성 중')
-    const done = await client.waitForTranslation(
-      translationId,
-      (_s, elapsed) => {
-        const mins = Math.floor(elapsed / 60000)
-        const secs = Math.floor((elapsed % 60000) / 1000)
-        setStage(
-          win,
-          'translating',
-          `영어 더빙 생성 중 · ${mins}분 ${String(secs).padStart(2, '0')}초 경과`
-        )
-      },
-      signal
-    )
+    const outPath = await awaitAndDownload(win, client, translationId, safeName, signal)
 
-    const safeName = source.name.replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]/g, '_')
-    const outPath = join(outputDir(), `${safeName}_EN_${Date.now()}.mp4`)
-
-    setStage(win, 'downloading', '결과 내려받는 중', 0)
-    await client.download(
-      done.video_url!,
-      outPath,
-      (r) => setStage(win, 'downloading', '결과 내려받는 중', r),
-      signal
-    )
-
-    setStage(win, 'done', '완료', 1, { outputPath: outPath })
-    lastFinished = job.progress
+    finishJob(win, undefined, outPath)
     return outPath
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    const canceled = signal.aborted
-    setStage(win, canceled ? 'canceled' : 'failed', canceled ? '취소됨' : '실패', null, { error: msg })
-    lastFinished = job?.progress ?? null
+    finishJob(win, e)
     throw e
   } finally {
     job = null
   }
 }
 
-export function registerIpc(win: BrowserWindow): void {
+/**
+ * 지난 실행에서 끝내지 못한 작업에 다시 붙는다.
+ *
+ * 앱을 껐다 켜는 것이 작업 취소와 같아서는 안 된다 — 번역은 HeyGen 쪽에서 돌고 있고
+ * 크레딧은 이미 소모됐다. 조용히 실패하는 편이 나은 경우(키가 아직 없음)는 기록을 남겨둔다.
+ */
+export async function resumeActiveJob(win: BrowserWindow): Promise<void> {
+  const saved = jobStore.active()
+  if (!saved || job) return
+
+  let client: HeyGenClient
+  try {
+    // Only resume old REST jobs through their original account; never resubmit them.
+    const key = store.get('heygenApiKey')
+    if (saved.transport !== 'mcp' && !key) return
+    client = saved.transport === 'mcp' ? heygen() : new HeyGenClient(key!)
+  } catch {
+    // API 키가 아직 설정되지 않았다. 기록은 남겨두고 다음 기회에 다시 시도한다.
+    return
+  }
+
+  job = {
+    id: saved.jobId,
+    controller: new AbortController(),
+    progress: {
+      jobId: saved.jobId,
+      stage: 'translating',
+      ratio: null,
+      message: '이전 작업에 다시 연결하는 중'
+    }
+  }
+  emit(win, job.progress)
+
+  try {
+    const outPath = await awaitAndDownload(
+      win,
+      client,
+      saved.translationId,
+      saved.safeName,
+      job.controller.signal,
+      Date.now() - saved.startedAt
+    )
+    finishJob(win, undefined, outPath)
+  } catch (e) {
+    finishJob(win, e)
+  } finally {
+    job = null
+  }
+}
+
+export function registerIpc(target: BrowserWindow): void {
+  currentWin = target
+  if (handlersRegistered) return
+  handlersRegistered = true
+
+  // 결과 파일이 이미 지워졌다면 완료 카드를 띄워봐야 재생되지 않는다. 경로만 떼어낸다.
+  const saved = jobStore.last()
+  if (saved) {
+    lastFinished =
+      saved.outputPath && !existsSync(saved.outputPath)
+        ? { ...saved, outputPath: undefined, message: '완료 (결과 파일을 찾을 수 없습니다)' }
+        : saved
+  }
+
   // ── 자격증명 ──────────────────────────────────────────────
   ipcMain.handle('creds:status', (): CredentialStatus => store.status())
-
-  ipcMain.handle('creds:setHeygen', async (_e, key: string) => {
-    const trimmed = key.trim()
-    if (!trimmed) {
-      store.clear('heygenApiKey')
-      return { ok: true }
-    }
-    // 저장 전에 실제로 통하는 키인지 확인한다. 나중에 파이프라인 중간에서 터지는 것보다 낫다.
-    try {
-      await new HeyGenClient(trimmed).me()
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : '키 검증에 실패했습니다.' }
-    }
-    store.set('heygenApiKey', trimmed)
-    return { ok: true }
-  })
-
-  ipcMain.handle('creds:setOpenai', (_e, key: string) => {
-    const trimmed = key.trim()
-    if (trimmed) store.set('openaiApiKey', trimmed)
-    else store.clear('openaiApiKey')
-    return { ok: true }
-  })
 
   ipcMain.handle('creds:setGoogleClient', (_e, id: string, secret: string) => {
     store.set('googleClientId', id.trim())
@@ -193,7 +304,7 @@ export function registerIpc(win: BrowserWindow): void {
       return { ok: false, error: 'Google 클라이언트 ID가 설정되지 않았습니다.' }
     }
     try {
-      const res = await signInWithGoogle(clientId, store.get('googleClientSecret'), allowedDomains())
+      const res = await signInWithGoogle(clientId, googleClientSecret(), allowedDomains())
       store.set('googleProfile', res.profile)
       if (res.refreshToken) store.set('googleRefreshToken', res.refreshToken)
       return { ok: true, profile: res.profile }
@@ -229,10 +340,52 @@ export function registerIpc(win: BrowserWindow): void {
 
   ipcMain.handle('auth:profile', (): GoogleProfile | null => store.get('googleProfile') ?? null)
 
+  // ── 최초 연결 안내 ────────────────────────────────────────
+  // 연결을 설정 화면 깊숙이 두면 아무도 하지 않는다. 로그인 직후 한 번만 안내한다.
+  ipcMain.handle('onboarding:needed', (): boolean => !store.get('onboardedAt'))
+
+  ipcMain.handle('onboarding:complete', () => {
+    store.set('onboardedAt', Date.now())
+    return { ok: true }
+  })
+
+  /** 설정에서 다시 볼 수 있게 한다. 연결을 바꾸고 싶을 때가 있다. */
+  ipcMain.handle('onboarding:reset', () => {
+    store.clear('onboardedAt')
+    return { ok: true }
+  })
+
+  ipcMain.handle('mcp:status', (): McpStatus => heygenMcp.status())
+
+  ipcMain.handle('mcp:connect', async () => {
+    try {
+      requireSignIn()
+      return { ok: true, status: await heygenMcp.connect() }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('mcp:disconnect', async () => {
+    await heygenMcp.disconnect()
+    return { ok: true, status: heygenMcp.status() }
+  })
+
+  /** 연결이 실제로 살아 있는지 확인용. 도구 개수만 돌려준다. */
+  ipcMain.handle('mcp:tools', async () => {
+    try {
+      requireSignIn()
+      const tools = await heygenMcp.tools()
+      return { ok: true, count: tools.length, names: tools.map((t) => t.name) }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
   // ── 영상 선택 ─────────────────────────────────────────────
   ipcMain.handle('video:pick', async () => {
     requireSignIn()
-    const res = await dialog.showOpenDialog(win, {
+    const res = await dialog.showOpenDialog(win(), {
       title: '더빙할 영상 선택',
       properties: ['openFile'],
       filters: [{ name: '영상', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'] }]
@@ -251,7 +404,7 @@ export function registerIpc(win: BrowserWindow): void {
   ipcMain.handle('job:start', async (_e, opts: DubOptions) => {
     try {
       requireSignIn()
-      const outputPath = await runDub(win, opts)
+      const outputPath = await runDub(win(), opts)
       return { ok: true, outputPath }
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
@@ -265,53 +418,24 @@ export function registerIpc(win: BrowserWindow): void {
 
   ipcMain.handle('job:current', (): JobProgress | null => job?.progress ?? lastFinished)
 
+  /**
+   * 안내에 쓰는 외부 링크만 연다.
+   *
+   * 렌더러가 임의 URL 을 열 수 있으면 그 자체가 공격 표면이다(피싱 페이지 유도 등).
+   * 여는 곳은 우리가 UI 에 적어둔 발급 페이지들뿐이므로 목록으로 못박는다.
+   */
+  ipcMain.handle('shell:openExternal', (_e, url: string) => {
+    const allowed = ['https://app.heygen.com/settings']
+    if (!allowed.includes(url)) return { ok: false }
+    void shell.openExternal(url)
+    return { ok: true }
+  })
+
   ipcMain.handle('shell:reveal', (_e, path: string) => {
     shell.showItemInFolder(path)
     return { ok: true }
   })
 
-  // ── 대화 ──────────────────────────────────────────────────
-  ipcMain.handle(
-    'chat:send',
-    async (_e, history: Array<{ role: 'user' | 'assistant'; content: string }>, input: string) => {
-      const key = store.get('openaiApiKey')
-      if (!key) return { ok: false, error: 'OpenAI API 키를 먼저 설정해 주세요.' }
-
-      try {
-        requireSignIn()
-        const ai = new OpenAIClient(key)
-        const turn = await ai.chat(history, input, {
-          hasVideo: () => Boolean(selected),
-          videoSummary: () =>
-            selected
-              ? `영상 "${selected.name}" 선택됨(${(selected.sizeBytes / 1024 / 1024).toFixed(1)}MB). ` +
-                (job ? `작업 진행 중: ${job.progress.message}.` : '진행 중인 작업 없음.')
-              : '선택된 영상 없음.',
-          startDub: async (opts) => {
-            // 거절 사유는 먼저 동기적으로 확인한다. 그래야 "시작했습니다"가 거짓말이 되지 않는다.
-            if (job) return '이미 진행 중인 작업이 있습니다. 끝난 뒤 다시 시도하세요.'
-            if (!store.get('heygenApiKey')) return 'HeyGen API 키가 설정되지 않았습니다.'
-
-            // 여기서부터는 오래 걸리므로 대화를 막지 않고 백그라운드로 넘긴다.
-            void runDub(win, opts).catch(() => {})
-            return `더빙 작업을 시작했습니다. 모드: ${opts.mode}.`
-          },
-          getJobStatus: async () => {
-            if (job) return `진행 중: ${job.progress.stage} — ${job.progress.message}`
-            if (lastFinished) {
-              return lastFinished.stage === 'done'
-                ? `마지막 작업 완료. 저장 위치: ${lastFinished.outputPath}`
-                : `마지막 작업 ${lastFinished.stage}: ${lastFinished.error ?? ''}`
-            }
-            return '아직 실행된 작업이 없습니다.'
-          }
-        })
-        return { ok: true, ...turn }
-      } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : String(e) }
-      }
-    }
-  )
 }
 
 function setSelected(path: string): SelectedVideo {
