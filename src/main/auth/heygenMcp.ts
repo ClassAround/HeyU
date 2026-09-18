@@ -120,8 +120,8 @@ async function register(endpoint: string, redirectUri: string): Promise<McpClien
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      client_name: 'HeyU',
-      client_uri: 'https://github.com/titanz/heyu',
+      client_name: 'RAWCUT GLOBAL',
+      client_uri: 'https://github.com/titanz/rawcut-global',
       redirect_uris: [redirectUri],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
@@ -155,7 +155,7 @@ function toTokens(body: TokenResponse, previous?: McpTokens): McpTokens {
 
 function resultPage(title: string, body: string, accent: string): string {
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<title>HeyU</title>
+<title>RAWCUT GLOBAL</title>
 <style>
   body{margin:0;height:100vh;display:grid;place-items:center;background:#14161A;
        font-family:Pretendard,-apple-system,'Segoe UI',sans-serif;color:#E6E8EC}
@@ -231,7 +231,7 @@ export function connectHeyGenMcp(timeoutMs = AUTH_TIMEOUT_MS): Promise<McpAuthRe
         })
         const tokens = toTokens(await json<TokenResponse>(tokenRes, 'HeyGen 토큰 교환'))
 
-        send(resultPage('HeyGen 연결 완료', '이 창을 닫고 HeyU로 돌아가세요.', '#E8833A'))
+        send(resultPage('HeyGen 연결 완료', '이 창을 닫고 RAWCUT GLOBAL로 돌아가세요.', '#E8833A'))
         cleanup()
         resolve({ client, tokens })
       } catch (e) {

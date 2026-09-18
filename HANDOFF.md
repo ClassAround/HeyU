@@ -1,4 +1,4 @@
-# HeyU 작업 인수인계
+# RAWCUT GLOBAL 작업 인수인계
 
 > **현재 상태 — v0.1.0 설치 테스트 (2026-09-18)**
 > 현재 구현과 설치 방법은 `README.md`와 `docs/releases/v0.1.0.md`를 기준으로 한다.
@@ -12,7 +12,7 @@
 
 > 이 문서는 **다른 세션이 맥락 없이 이어받기 위한** 것이다.
 > "무엇을 했는지"는 코드에 남지만 **"왜 그렇게 했는지"** 는 남지 않으므로 그쪽에 무게를 둔다.
-> 최종 갱신: 2026-09-18 (HeyGen MCP OAuth 연동 구현)
+> 최종 갱신: 2026-09-18 (v0.1.2 — 앱 이름 RAWCUT GLOBAL 로 변경, 영상 재생 수정) (HeyGen MCP OAuth 연동 구현)
 
 ---
 
@@ -157,7 +157,7 @@ MCP 도구만으로는 **핵심 작업이 끝까지 가지 않는다.** MCP 는 
 |---|---|---|
 | `pick_video` | 파일 선택 창 | 원격 서버는 이 PC 의 파일 시스템을 모른다 |
 | `upload_video` | 로컬 영상 → HeyGen, `asset_id` 반환 | 바이트를 올릴 주체가 로컬에 있어야 한다 |
-| `download_result` | 결과 URL → `~/Movies/HeyU/` | 받은 파일을 놓을 곳이 이 PC 다 |
+| `download_result` | 결과 URL → `~/Movies/RAWCUT GLOBAL/` | 받은 파일을 놓을 곳이 이 PC 다 |
 
 전형적인 흐름: `pick_video` → `upload_video` → (모델이 `asset_id` 로 `heygen_*` 호출)
 → `download_result`. 시스템 프롬프트에 이 순서를 명시했다.
@@ -300,7 +300,7 @@ spctl 판정: code has no resources but signature indicates they must be present
 ```
 **사용자가 그냥 열면 Gatekeeper가 막는다.** 임시 우회:
 ```bash
-xattr -dr com.apple.quarantine /Applications/HeyU.app
+xattr -dr com.apple.quarantine /Applications/RAWCUT GLOBAL.app
 ```
 사내 배포라도 이건 불편하다. **Apple Developer 계정($99/년)으로 서명 + 공증(notarization)이
 필요하다.** 미결정 사항이다.
@@ -315,6 +315,31 @@ Windows EXE도 서명 안 됨 → SmartScreen 경고가 뜬다.
 
 ---
 
+### 앱 이름을 바꾸면 저장 경로가 바뀐다
+
+`userData` 경로는 앱 이름에서 나온다. HeyU → RAWCUT GLOBAL 로 바꾸는 순간
+Electron 이 **빈 폴더를 새로 만들고** 사용자는 Google 로그인·HeyGen 연결을 전부 잃는다.
+
+`migrateLegacyUserData()` 가 `credentials.bin` 과 `jobs.json` 을 새 위치로 **복사**한다.
+옮기지 않고 복사하는 이유는 예전 이름 빌드를 다시 실행해도 그쪽이 망가지지 않게 하기 위해서다.
+
+**폴더 존재 여부로 판단하면 안 된다.** Electron 이 우리 코드보다 먼저 빈 userData 폴더를
+만들어 두기 때문에 `existsSync(userData)` 는 항상 참이다. 처음에 이렇게 짰다가 이전이
+조용히 건너뛰어졌다. 옮길 **파일**이 있는지를 봐야 한다.
+
+결과 폴더(`~/Movies/…`)도 같은 이유로 함께 옮긴다.
+
+### `<video>` 는 Range 요청 없이 재생되지 않는다
+
+미리보기가 2초만 재생되고 멈추며 탐색도 되지 않는 버그가 있었다.
+원인은 `heyu-media` 핸들러가 `net.fetch(file://…)` 로 **파일 전체만** 돌려준 것이다.
+
+브라우저는 미디어를 구간 단위로 요청하며 재생한다. 서버가 `206 Partial Content` 를
+못 주면 첫 응답 이후를 이어받을 방법이 없다. 파일이 클수록 증상이 뚜렷하다.
+
+해석 로직은 `services/mediaRange.ts` 로 따로 뺐다 — 프로토콜 핸들러 안에 두면 테스트할 수 없다.
+`bytes=-N`(끝에서부터)도 반드시 지원해야 한다. MP4 의 moov 가 파일 끝에 있는 경우 실제로 쓰인다.
+
 ## 7. 현재 상태
 
 ### 검증된 것
@@ -328,9 +353,9 @@ Windows EXE도 서명 안 됨 → SmartScreen 경고가 뜬다.
 
 ### 배포 파일 (`release/`)
 ```
-HeyU-0.1.0-arm64.dmg   94MB   (Apple Silicon)
-HeyU-0.1.0-x64.dmg     98MB   (Intel Mac)
-HeyU-0.1.0-x64.exe     78MB   (Windows, NSIS 설치 프로그램)
+RAWCUT GLOBAL-0.1.0-arm64.dmg   94MB   (Apple Silicon)
+RAWCUT GLOBAL-0.1.0-x64.dmg     98MB   (Intel Mac)
+RAWCUT GLOBAL-0.1.0-x64.exe     78MB   (Windows, NSIS 설치 프로그램)
 ```
 Windows EXE는 macOS에서 빌드했다. electron-builder가 **자체 Wine을 내려받아** 처리하므로
 시스템에 Wine을 깔 필요가 없다.
@@ -378,7 +403,7 @@ npm run pack:win   # EXE (NSIS)
 3. (선택) 설정 → "HeyGen 계정 연결" — 브라우저 로그인 한 번이면 끝. 키 입력이 필요 없고,
    채팅에서 HeyGen 도구 전체를 쓸 수 있다. 더빙 버튼과는 별개 경로다.
 4. 영상 선택 → "영어로 더빙하기"
-5. 결과는 `~/Movies/HeyU/` 에 저장
+5. 결과는 `~/Movies/RAWCUT GLOBAL/` 에 저장
 
 OpenAI 키와 채팅은 선택이다. 없어도 더빙은 된다.
 
@@ -389,4 +414,4 @@ OpenAI 키와 채팅은 선택이다. 없어도 더빙은 된다.
 - **앱을 띄울 때는 미리 말할 것.** 검증하느라 창을 반복해서 띄웠다 껐더니 사용자가 불편해했다.
   오프스크린 캡처(`show: false` + `webContents.capturePage()`)를 쓰면 화면을 가리지 않는다.
 - 사용자가 선택한 것: **Electron**(Tauri 아님), **OpenAI API 키로 LLM 추가**(제거 아님).
-- 앱 이름은 **HeyU**. (Shottr는 무관한 macOS 스크린샷 앱이며 한 번 혼동이 있었다.)
+- 앱 이름은 **RAWCUT GLOBAL**. (Shottr는 무관한 macOS 스크린샷 앱이며 한 번 혼동이 있었다.)

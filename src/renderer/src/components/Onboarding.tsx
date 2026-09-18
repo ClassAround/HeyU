@@ -61,7 +61,7 @@ export default function Onboarding({ status, onDone, onChanged }: Props): JSX.El
       <div className="gate-card ob">
         <div className="gate-brand">
           <span className="dot" />
-          HeyU
+          RAWCUT GLOBAL
         </div>
         <h1>연결 설정</h1>
         <p className="gate-sub">한 번만 하면 됩니다. 나중에 설정에서 바꿀 수 있습니다.</p>

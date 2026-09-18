@@ -74,7 +74,7 @@ export default function Login({ onSignedIn }: Props): JSX.Element {
       <div className="gate-card">
         <div className="gate-brand">
           <span className="dot" />
-          HeyU
+          RAWCUT GLOBAL
         </div>
         <h1>영어 립싱크 더빙</h1>
         <p className="gate-sub">

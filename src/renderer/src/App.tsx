@@ -112,7 +112,7 @@ export default function App(): JSX.Element {
       <header className="titlebar">
         <div className="brand">
           <span className="dot" />
-          HeyU
+          RAWCUT GLOBAL
           <small>영어 립싱크 더빙</small>
         </div>
 

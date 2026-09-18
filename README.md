@@ -1,4 +1,4 @@
-# HeyU
+# RAWCUT GLOBAL
 
 2분 내외의 영상을 넣으면 **영어 립싱크 더빙** 결과를 돌려주는 Windows / macOS 데스크톱 앱.
 
@@ -9,7 +9,7 @@
 1. Google 계정으로 로그인한다.
 2. HeyGen 계정을 브라우저 OAuth로 연결한다.
 3. 영상을 선택하고 옵션을 정한 뒤 **영어로 더빙하기**를 누른다.
-4. 완료된 영상을 앱에서 재생하거나 `~/Movies/HeyU/`에서 연다.
+4. 완료된 영상을 앱에서 재생하거나 `~/Movies/RAWCUT GLOBAL/`에서 연다.
 
 앱이 HeyGen MCP를 직접 호출한다. 별도 AI 로그인과 채팅은 필요하지 않다.
 
@@ -30,7 +30,7 @@
 
 ## 설치와 실행
 
-설치 파일은 [GitHub Releases](https://github.com/ClassAround/HeyU/releases)에서 받습니다.
+설치 파일은 [GitHub Releases](https://github.com/ClassAround/RAWCUT GLOBAL/releases)에서 받습니다.
 Mac은 v0.1.1 이상을 사용하세요. 테스트 빌드에는 ad-hoc 서명만 적용되어 있으며
 Apple Developer ID 서명·공증은 없습니다. 최초 실행이 차단되면 파일 출처를 확인한 후
 시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기를 사용합니다.

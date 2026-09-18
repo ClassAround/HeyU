@@ -194,7 +194,7 @@ export class HeyGenClient {
       mode: opts.mode,
       disable_music_track: opts.removeMusic,
       enable_dynamic_duration: true,
-      title: `HeyU · English dub · ${new Date().toISOString()}`
+      title: `RAWCUT GLOBAL · English dub · ${new Date().toISOString()}`
     }
     if (opts.useStockVoice) {
       payload.stock_voice_config = { use_stock_voice: true }

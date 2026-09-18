@@ -63,7 +63,7 @@ async function freshAccessToken(): Promise<string> {
 async function openSession(): Promise<Client> {
   const accessToken = await freshAccessToken()
 
-  const client = new Client({ name: 'HeyU', version: '0.1.0' }, { capabilities: {} })
+  const client = new Client({ name: 'RAWCUT GLOBAL', version: '0.1.0' }, { capabilities: {} })
   const t = new StreamableHTTPClientTransport(new URL(MCP_ENDPOINT), {
     requestInit: { headers: { authorization: `Bearer ${accessToken}` } }
   })

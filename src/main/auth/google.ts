@@ -88,7 +88,7 @@ function assertAllowedDomain(claims: IdTokenClaims, allowed: string[]): void {
 
 function resultPage(title: string, body: string, accent: string): string {
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<title>HeyU</title>
+<title>RAWCUT GLOBAL</title>
 <style>
   body{margin:0;height:100vh;display:grid;place-items:center;background:#14161A;
        font-family:Pretendard,-apple-system,'Segoe UI',sans-serif;color:#E6E8EC}
@@ -175,7 +175,7 @@ export function signInWithGoogle(
         if (!profileRes.ok) throw new Error('사용자 정보를 가져오지 못했습니다.')
         const profile = (await profileRes.json()) as GoogleProfile
 
-        send(resultPage('로그인 완료', '이 창을 닫고 HeyU로 돌아가세요.', '#E8833A'))
+        send(resultPage('로그인 완료', '이 창을 닫고 RAWCUT GLOBAL로 돌아가세요.', '#E8833A'))
         cleanup()
         resolve({ profile, refreshToken: tokens.refresh_token, accessToken: tokens.access_token })
       } catch (e) {

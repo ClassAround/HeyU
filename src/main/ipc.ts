@@ -46,7 +46,7 @@ function win(): BrowserWindow {
 }
 
 function outputDir(): string {
-  const dir = join(app.getPath('videos'), 'HeyU')
+  const dir = join(app.getPath('videos'), 'RAWCUT GLOBAL')
   mkdirSync(dir, { recursive: true })
   return dir
 }

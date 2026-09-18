@@ -1,6 +1,6 @@
 {
-  "name": "heyu",
-  "version": "0.1.1",
+  "name": "rawcut-global",
+  "version": "0.1.2",
   "description": "영상을 넣으면 영어 립싱크 더빙으로 돌려주는 데스크톱 앱",
   "main": "./out/main/index.js",
   "author": "TitanZ 전략기획실",
@@ -30,8 +30,8 @@
     "vite": "^5.4.11"
   },
   "build": {
-    "appId": "kr.co.titanz.heyu",
-    "productName": "HeyU",
+    "appId": "kr.co.titanz.rawcutglobal",
+    "productName": "RAWCUT GLOBAL",
     "copyright": "Copyright © 2026 TitanZ",
     "directories": {
       "output": "release",
@@ -40,7 +40,7 @@
     "files": [
       "out/**/*"
     ],
-    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "artifactName": "RAWCUT-GLOBAL-${version}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.video",
       "icon": "build/icon.icns",
@@ -88,7 +88,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "HeyU"
+      "shortcutName": "RAWCUT GLOBAL"
     }
   },
   "dependencies": {
